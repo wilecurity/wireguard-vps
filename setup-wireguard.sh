@@ -10,7 +10,7 @@ NC='\033[0m'
 
 clear
 echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}     WIREGUARD VPN SETUP (COMPLETE)    ${NC}"
+echo -e "${BLUE}     WIREGUARD VPN SETUP    ${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
@@ -32,7 +32,7 @@ read VPS_IP
 
 if [[ ! $VPS_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo -e "${RED}❌ Invalid IP address format!${NC}"
-    echo -e "${YELLOW}Please enter a valid IPv4 address (e.g., 162.35.173.170)${NC}"
+    echo -e "${YELLOW}Please enter a valid IPv4 address (e.g., 162.62.18.120)${NC}"
     exit 1
 fi
 echo -e "${GREEN}✅ Using IP: $VPS_IP${NC}"
