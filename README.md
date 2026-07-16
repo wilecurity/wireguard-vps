@@ -1,4 +1,4 @@
-# WireGuard VPN Auto Setup
+# WireGuard-VPS
 
 A lightweight Bash script that automates the deployment of a WireGuard VPN server on an Ubuntu VPS. The script installs the required packages, configures WireGuard, generates secure server and client key pairs, creates a client configuration file, and generates a QR code for quick setup on mobile devices.
 
