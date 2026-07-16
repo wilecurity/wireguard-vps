@@ -1,17 +1,26 @@
 #!/bin/bash
 
-# Colors for output
+
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 clear
 echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}     WIREGUARD VPN SETUP  ${NC}"
+echo -e "${BLUE}     WIREGUARD VPN SETUP (COMPLETE)    ${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
+
+# ============================================
+# CHECK: Run as root
+# ============================================
+if [ "$EUID" -ne 0 ]; then 
+    echo -e "${RED}❌ Please run as root (sudo ./setup-wireguard.sh)${NC}"
+    exit 1
+fi
 
 # ============================================
 # STEP 1: Get VPS Public IP
@@ -21,27 +30,21 @@ echo -e "${GREEN}   (Example: 162.35.173.170)${NC}"
 echo -n "   IP: "
 read VPS_IP
 
-# Validate IP format
 if [[ ! $VPS_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo -e "${RED}❌ Invalid IP address format!${NC}"
     echo -e "${YELLOW}Please enter a valid IPv4 address (e.g., 162.35.173.170)${NC}"
     exit 1
 fi
-
 echo -e "${GREEN}✅ Using IP: $VPS_IP${NC}"
 echo ""
 
 # ============================================
-# STEP 2: Get Device Name (Optional)
+# STEP 2: Get Device Name
 # ============================================
 echo -e "${YELLOW}📱 Enter device name (e.g., iPhone, Laptop, Android):${NC}"
 echo -n "   Name [default: iPhone]: "
 read DEVICE_NAME
-
-if [ -z "$DEVICE_NAME" ]; then
-    DEVICE_NAME="iPhone"
-fi
-
+[ -z "$DEVICE_NAME" ] && DEVICE_NAME="iPhone"
 echo -e "${GREEN}✅ Device: $DEVICE_NAME${NC}"
 echo ""
 
@@ -60,25 +63,52 @@ echo ""
 # ============================================
 # STEP 4: Install WireGuard
 # ============================================
-echo -e "${YELLOW}📦 Installing WireGuard...${NC}"
+echo -e "${YELLOW}📦 Updating packages and installing WireGuard...${NC}"
 apt update -qq
-apt install wireguard iptables qrencode ufw -y -qq
+apt install wireguard iptables qrencode ufw curl -y -qq
 echo -e "${GREEN}✅ WireGuard installed!${NC}"
 echo ""
 
 # ============================================
-# STEP 5: Enable IP Forwarding
+# STEP 5: ENABLE IP FORWARDING (CRITICAL FIX!)
 # ============================================
-echo -e "${YELLOW}🔧 Enabling IP forwarding...${NC}"
-if ! grep -q "net.ipv4.ip_forward=1" /etc/sysctl.conf; then
-    echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-fi
+echo -e "${YELLOW}🔧 Enabling IP forwarding (CRITICAL!)...${NC}"
+
+# Remove ALL existing net.ipv4.ip_forward lines (including commented ones)
+sed -i '/net.ipv4.ip_forward/d' /etc/sysctl.conf
+sed -i '/net.ipv4.ip_forward/d' /etc/sysctl.d/*.conf 2>/dev/null
+
+# Add the correct value
+echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+
+# Apply immediately
 sysctl -p > /dev/null 2>&1
-echo -e "${GREEN}✅ IP forwarding enabled${NC}"
+
+# VERIFY it worked
+IP_FORWARD=$(cat /proc/sys/net/ipv4/ip_forward)
+if [ "$IP_FORWARD" = "1" ]; then
+    echo -e "${GREEN}✅ IP forwarding ENABLED (value: $IP_FORWARD)${NC}"
+else
+    echo -e "${RED}❌ CRITICAL ERROR: IP forwarding is still $IP_FORWARD!${NC}"
+    echo -e "${YELLOW}   Trying direct method...${NC}"
+    
+    # Direct kernel method
+    echo 1 > /proc/sys/net/ipv4/ip_forward
+    
+    IP_FORWARD=$(cat /proc/sys/net/ipv4/ip_forward)
+    if [ "$IP_FORWARD" = "1" ]; then
+        echo -e "${GREEN}✅ IP forwarding manually ENABLED${NC}"
+    else
+        echo -e "${RED}❌ FAILED to enable IP forwarding!${NC}"
+        echo -e "${YELLOW}   Please check: /etc/sysctl.conf${NC}"
+        echo -e "${YELLOW}   Also check if your VPS provider blocks this${NC}"
+        exit 1
+    fi
+fi
 echo ""
 
 # ============================================
-# STEP 6: Configure Firewall
+# STEP 6: Configure Firewall (UFW)
 # ============================================
 echo -e "${YELLOW}🔒 Configuring firewall...${NC}"
 ufw allow 22/tcp > /dev/null 2>&1
@@ -89,19 +119,19 @@ echo -e "${GREEN}✅ Firewall configured (ports 22/tcp, 51820/udp open)${NC}"
 echo ""
 
 # ============================================
-# STEP 7: Create Keys Directory
+# STEP 7: Create Keys
 # ============================================
 echo -e "${YELLOW}🔑 Generating cryptographic keys...${NC}"
 mkdir -p /etc/wireguard/keys
 cd /etc/wireguard/keys
 
-# Generate server keys
+# Server keys
 SERVER_PRIVATE=$(wg genkey)
 SERVER_PUBLIC=$(echo $SERVER_PRIVATE | wg pubkey)
 echo $SERVER_PRIVATE > server_private.key
 echo $SERVER_PUBLIC > server_public.key
 
-# Generate client keys
+# Client keys
 CLIENT_PRIVATE=$(wg genkey)
 CLIENT_PUBLIC=$(echo $CLIENT_PRIVATE | wg pubkey)
 echo $CLIENT_PRIVATE > ${DEVICE_NAME}_private.key
@@ -137,13 +167,12 @@ echo -e "${GREEN}✅ Server configuration created${NC}"
 echo ""
 
 # ============================================
-# STEP 9: Start WireGuard
+# STEP 9: Enable and Start WireGuard
 # ============================================
 echo -e "${YELLOW}🚀 Starting WireGuard service...${NC}"
 systemctl start wg-quick@wg0
 systemctl enable wg-quick@wg0 2>/dev/null
 
-# Check if running
 sleep 2
 if systemctl is-active --quiet wg-quick@wg0; then
     echo -e "${GREEN}✅ WireGuard is running!${NC}"
@@ -176,7 +205,42 @@ echo -e "${GREEN}✅ Client configuration created${NC}"
 echo ""
 
 # ============================================
-# STEP 11: Display Summary
+# STEP 11: VERIFY EVERYTHING
+# ============================================
+echo -e "${YELLOW}🔍 Running verification checks...${NC}"
+
+# Check IP forwarding
+IP_FORWARD=$(cat /proc/sys/net/ipv4/ip_forward)
+if [ "$IP_FORWARD" = "1" ]; then
+    echo -e "${GREEN}   ✅ IP Forwarding: $IP_FORWARD${NC}"
+else
+    echo -e "${RED}   ❌ IP Forwarding: $IP_FORWARD (should be 1!)${NC}"
+fi
+
+# Check WireGuard
+if systemctl is-active --quiet wg-quick@wg0; then
+    echo -e "${GREEN}   ✅ WireGuard: Running${NC}"
+else
+    echo -e "${RED}   ❌ WireGuard: Not running${NC}"
+fi
+
+# Check firewall
+if ufw status | grep -q "Status: active"; then
+    echo -e "${GREEN}   ✅ Firewall: Active${NC}"
+else
+    echo -e "${YELLOW}   ⚠️  Firewall: Inactive${NC}"
+fi
+
+# Check if port is listening
+if ss -ulnp | grep -q "51820"; then
+    echo -e "${GREEN}   ✅ Port 51820: Listening${NC}"
+else
+    echo -e "${RED}   ❌ Port 51820: Not listening${NC}"
+fi
+echo ""
+
+# ============================================
+# STEP 12: Display Results
 # ============================================
 echo -e "${BLUE}========================================${NC}"
 echo -e "${GREEN}✅ SETUP COMPLETE!${NC}"
@@ -187,8 +251,9 @@ echo -e "   Server IP:     ${GREEN}$VPS_IP${NC}"
 echo -e "   Server Port:   ${GREEN}51820${NC}"
 echo -e "   Device Name:   ${GREEN}$DEVICE_NAME${NC}"
 echo -e "   VPN IP:        ${GREEN}10.0.0.2${NC}"
+echo -e "   IP Forwarding: ${GREEN}ENABLED (1) ✅${NC}"
 echo -e "   Config File:   ${GREEN}/etc/wireguard/${DEVICE_NAME}.conf${NC}"
-echo -e "   Server Status: ${GREEN}Running${NC}"
+echo -e "   Server Status: ${GREEN}Running ✅${NC}"
 echo ""
 echo -e "${YELLOW}📱 SCAN THIS QR CODE ON YOUR DEVICE:${NC}"
 echo ""
