@@ -26,8 +26,8 @@ A lightweight Bash script that automates the deployment of a WireGuard VPN serve
 Clone the repository:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/wireguard-vpn-auto-setup.git
-cd wireguard-vpn-auto-setup
+git clone https://github.com/wilecurity/wireguard-vps.git
+cd wireguard-vps
 ```
 
 Make the script executable:
@@ -59,27 +59,6 @@ The installer automatically creates:
 * Client configuration file
 * QR Code for mobile devices
 
-## Project Structure
-
-```text
-.
-├── install.sh
-├── README.md
-└── LICENSE
-```
-
-Generated files:
-
-```text
-/etc/wireguard/
-├── wg0.conf
-├── iPhone.conf
-└── keys/
-    ├── server_private.key
-    ├── server_public.key
-    ├── iPhone_private.key
-    └── iPhone_public.key
-```
 
 ## Verify the VPN
 
